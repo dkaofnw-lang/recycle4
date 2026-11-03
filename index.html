@@ -1,0 +1,276 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>분리수거 도우미</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      font-family: Arial, sans-serif;
+      background: #f5f7f4;
+      color: #26352b;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 450px;
+      margin: 0 auto;
+      padding: 30px 24px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.07);
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #25834b;
+      font-size: 27px;
+    }
+
+    .description {
+      color: #777;
+      margin-bottom: 25px;
+      font-size: 14px;
+    }
+
+    .upload-area {
+      border: 2px dashed #b8d8c1;
+      border-radius: 14px;
+      padding: 25px 15px;
+      margin-bottom: 18px;
+    }
+
+    input {
+      max-width: 100%;
+    }
+
+    #preview {
+      display: none;
+      max-width: 100%;
+      max-height: 260px;
+      margin: 20px auto 0;
+      border-radius: 12px;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      background: #25834b;
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #aab5ad;
+      cursor: not-allowed;
+    }
+
+    #result {
+      display: none;
+      margin-top: 22px;
+      padding: 20px;
+      border-radius: 12px;
+      background: #edf7ef;
+    }
+
+    #result h2 {
+      margin-top: 0;
+      color: #25834b;
+    }
+
+    #message {
+      font-size: 17px;
+      line-height: 1.7;
+      font-weight: bold;
+    }
+
+    #confidence {
+      color: #777;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    #status {
+      margin-top: 15px;
+      color: #777;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h1>분리수거 도우미</h1>
+
+    <p class="description">
+      쓰레기 사진을 업로드하면 AI가 종류를 분석해 줍니다.
+    </p>
+
+    <div class="upload-area">
+      <p>분석할 쓰레기 이미지를 선택하세요.</p>
+      <input type="file" id="imageInput" accept="image/*">
+      <img id="preview" alt="업로드한 이미지">
+    </div>
+
+    <button id="analyzeButton" disabled>
+      이미지 분석
+    </button>
+
+    <div id="result">
+      <h2>분석 결과</h2>
+      <p id="message"></p>
+      <p id="confidence"></p>
+    </div>
+
+    <p id="status">AI 모델을 불러오는 중입니다...</p>
+
+  </div>
+
+  <script>
+    const MODEL_URL =
+      "https://teachablemachine.withgoogle.com/models/Pd7LmMqQX/";
+
+    let model;
+    let selectedImage = null;
+
+    const imageInput = document.getElementById("imageInput");
+    const preview = document.getElementById("preview");
+    const analyzeButton = document.getElementById("analyzeButton");
+    const result = document.getElementById("result");
+    const message = document.getElementById("message");
+    const confidence = document.getElementById("confidence");
+    const status = document.getElementById("status");
+
+    const sortingGuide = {
+      a: {
+        name: "종이",
+        guide: "종이류 분리수거함에 버려 주세요."
+      },
+      b: {
+        name: "캔",
+        guide: "캔류 분리수거함에 버려 주세요."
+      },
+      c: {
+        name: "플라스틱",
+        guide: "플라스틱 분리수거함에 버려 주세요."
+      }
+    };
+
+    async function loadModel() {
+      try {
+        model = await tmImage.load(
+          MODEL_URL + "model.json",
+          MODEL_URL + "metadata.json"
+        );
+
+        status.textContent = "이미지를 업로드해 주세요.";
+        analyzeButton.disabled = !selectedImage;
+
+      } catch (error) {
+        status.textContent =
+          "AI 모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.";
+        console.error(error);
+      }
+    }
+
+    imageInput.addEventListener("change", function(event) {
+      const file = event.target.files[0];
+
+      if (!file) return;
+
+      if (!file.type.startsWith("image/")) {
+        status.textContent = "이미지 파일을 선택해 주세요.";
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const img = new Image();
+
+        img.onload = function() {
+          selectedImage = img;
+          preview.src = e.target.result;
+          preview.style.display = "block";
+
+          result.style.display = "none";
+          analyzeButton.disabled = !model;
+          status.textContent = model
+            ? "이미지를 분석할 준비가 되었습니다."
+            : "AI 모델을 불러오는 중입니다.";
+        };
+
+        img.src = e.target.result;
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    analyzeButton.addEventListener("click", async function() {
+      if (!model || !selectedImage) return;
+
+      analyzeButton.disabled = true;
+      analyzeButton.textContent = "분석 중...";
+      result.style.display = "none";
+      status.textContent = "AI가 이미지를 분석하고 있습니다.";
+
+      try {
+        const predictions = await model.predict(selectedImage);
+
+        const best = predictions.reduce((a, b) =>
+          a.probability > b.probability ? a : b
+        );
+
+        const className = best.className.trim().toLowerCase();
+        const percent = (best.probability * 100).toFixed(1);
+
+        result.style.display = "block";
+
+        if (best.probability < 0.8 || !sortingGuide[className]) {
+          message.textContent =
+            "종류를 정확하게 인식하지 못했습니다. 다른 사진으로 다시 시도해 주세요.";
+          confidence.textContent =
+            "인식 신뢰도: " + percent + "%";
+        } else {
+          const item = sortingGuide[className];
+
+          message.textContent =
+            item.name + "으로 인식했습니다. " + item.guide;
+
+          confidence.textContent =
+            "인식 신뢰도: " + percent + "%";
+        }
+
+        status.textContent = "분석이 완료되었습니다.";
+
+      } catch (error) {
+        status.textContent = "이미지 분석 중 오류가 발생했습니다.";
+        console.error(error);
+      }
+
+      analyzeButton.disabled = false;
+      analyzeButton.textContent = "이미지 분석";
+    });
+
+    loadModel();
+  </script>
+
+</body>
+</html>
